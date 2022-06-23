@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 from qiskit.algorithms import VQE
 from qiskit.utils import QuantumInstance
-from qiskit import Aer
+from qiskit import Aer, QuantumCircuit, QuantumRegister
 from qiskit.opflow import X, Z, I, Y, StateFn, PauliOp, OperatorBase
 from qiskit.algorithms.optimizers import ADAM, L_BFGS_B, CG, SPSA
+from qiskit.circuit import parameterexpression, Parameter, ParameterVector
 from qiskit.circuit.library import TwoLocal
 from qiskit.opflow.gradients import Gradient
 from qiskit.providers.aer.noise import NoiseModel
@@ -33,20 +34,30 @@ def circular_chiral_walk(n_sites: int, alpha: float):
 
 def all_permutations_experiment() -> None:
     # Problem Hamiltonian
-    n_qubits = 3
-    h = circular_chiral_walk(n_qubits, np.pi / 2)
-
+    n_qubits = 2
+    # h = circular_chiral_walk(n_qubits, np.pi / 2)
+    # h = (Z ^ I ^ I) + (2 * I ^ Z ^ I) + (3 * I ^ I ^ Z)
+    h = (Z ^ I) + (10 * I ^ Z)
     # Error model parameters
-    depol_error_rates = [1e-3, 1e-2, 2e-2]
+    depol_error_rates = [0., 1e-1]
 
-    samples_per_permutation = 10
+    samples_per_permutation = 20
 
     # Ansatz parameters
     spsa = SPSA(maxiter=1000)
-    ansatz = TwoLocal(rotation_blocks=['ry'],
-                      entanglement_blocks='cz',
-                      reps=2,
-                      num_qubits=h.num_qubits)
+    # ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
+    #                   entanglement_blocks='cz',
+    #                   entanglement=[],
+    #                   reps=1,
+    #                   num_qubits=h.num_qubits)
+
+    params = ParameterVector('theta', n_qubits * 2)
+
+    qreg = QuantumRegister(n_qubits)
+    ansatz = QuantumCircuit(qreg)
+    for i in range(n_qubits):
+        ansatz.ry(params[2 * i], qreg[i])
+        ansatz.rx(params[2 * i + 1], qreg[i])
 
     results = np.zeros((factorial(n_qubits), samples_per_permutation))
     for i, perm in enumerate(permutations(range(n_qubits))):
@@ -98,6 +109,6 @@ def plot_permutations_experiment(expt_time: str):
 
 
 if __name__ == '__main__':
-    # all_permutations_experiment()
-    plot_permutations_experiment("1655203364")
+    all_permutations_experiment()
+    # plot_permutations_experiment("1655989777")
     # print(inverse_factorial(factorial(5)))
