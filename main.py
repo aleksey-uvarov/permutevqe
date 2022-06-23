@@ -39,9 +39,9 @@ def all_permutations_experiment() -> None:
     # h = (Z ^ I ^ I) + (2 * I ^ Z ^ I) + (3 * I ^ I ^ Z)
     h = (Z ^ I) + (10 * I ^ Z)
     # Error model parameters
-    depol_error_rates = [0., 1e-1]
+    depol_error_rates = [0., 3e-1]
 
-    samples_per_permutation = 20
+    samples_per_permutation = 50
 
     # Ansatz parameters
     spsa = SPSA(maxiter=1000)
@@ -65,7 +65,7 @@ def all_permutations_experiment() -> None:
         noise_model = NoiseModel()
         for j, qubitno in enumerate(perm):
             noise_model.add_quantum_error(depolarizing_error(depol_error_rates[j], 1),
-                                          ['u1', 'u2', 'u3'], [qubitno])
+                                          ['u1', 'u2', 'u3', 'rx', 'ry', 'rz'], [qubitno])
 
         quantum_instance = QuantumInstance(backend=Aer.get_backend("qasm_simulator"),
                                            shots=1024,
@@ -95,7 +95,8 @@ def inverse_factorial(x: int) -> complex:
 
 def plot_permutations_experiment(expt_time: str):
     data = np.loadtxt("permutation_vqe_" + expt_time + ".txt")
-    n_qubits = int(inverse_factorial(data.shape[0]).real)
+    n_qubits = int(round(inverse_factorial(data.shape[0]).real - 1))
+    print(n_qubits)
     print(data.shape)
     for i in range(data.shape[1]):
         plt.scatter(np.arange(data.shape[0]), data[:, i], alpha=0.3, color="tab:blue")
@@ -104,11 +105,12 @@ def plot_permutations_experiment(expt_time: str):
     print(perms)
     plt.xticks(np.arange(data.shape[0]), perms)
     plt.ylabel("VQE energy")
+    plt.grid()
     plt.savefig("permutations_" + expt_time + ".png", format='png', bbox_inches='tight', dpi=400)
     plt.show()
 
 
 if __name__ == '__main__':
     all_permutations_experiment()
-    # plot_permutations_experiment("1655989777")
+    # plot_permutations_experiment("1655992899")
     # print(inverse_factorial(factorial(5)))
