@@ -12,7 +12,7 @@ from qiskit.providers.aer.noise import depolarizing_error
 from qiskit.providers.aer.noise import thermal_relaxation_error
 import numpy as np
 from functools import reduce
-from itertools import permutations
+from itertools import permutations, combinations
 from math import factorial
 import time
 from scipy.special import lambertw
@@ -34,38 +34,45 @@ def circular_chiral_walk(n_sites: int, alpha: float):
 
 def all_permutations_experiment() -> None:
     # Problem Hamiltonian
-    n_qubits = 2
-    # h = circular_chiral_walk(n_qubits, np.pi / 2)
+    n_qubits = 3
+    h = circular_chiral_walk(n_qubits, np.pi / 2)
     # h = (Z ^ I ^ I) + (2 * I ^ Z ^ I) + (3 * I ^ I ^ Z)
-    h = (Z ^ I) + (10 * I ^ Z)
+    # h = (Z ^ I) + (10 * I ^ Z)
     # Error model parameters
-    depol_error_rates = [0., 3e-1]
+    depol_error_rates = [0., 5e-2, 1e-1]
+    np.random.seed(0)
+    depol_error_rates_2q = np.random.rand(n_qubits, n_qubits) * 0.05
+    depol_error_rates_2q += depol_error_rates_2q.T
 
-    samples_per_permutation = 50
+    samples_per_permutation = 10
 
     # Ansatz parameters
     spsa = SPSA(maxiter=1000)
-    # ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
-    #                   entanglement_blocks='cz',
-    #                   entanglement=[],
-    #                   reps=1,
-    #                   num_qubits=h.num_qubits)
+    ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
+                      entanglement_blocks='cz',
+                      # entanglement=[],
+                      reps=2,
+                      num_qubits=h.num_qubits)
 
-    params = ParameterVector('theta', n_qubits * 2)
-
-    qreg = QuantumRegister(n_qubits)
-    ansatz = QuantumCircuit(qreg)
-    for i in range(n_qubits):
-        ansatz.ry(params[2 * i], qreg[i])
-        ansatz.rx(params[2 * i + 1], qreg[i])
+    # params = ParameterVector('theta', n_qubits * 2)
+    #
+    # qreg = QuantumRegister(n_qubits)
+    # ansatz = QuantumCircuit(qreg)
+    # for i in range(n_qubits):
+    #     ansatz.ry(params[2 * i], qreg[i])
+    #     ansatz.rx(params[2 * i + 1], qreg[i])
 
     results = np.zeros((factorial(n_qubits), samples_per_permutation))
     for i, perm in enumerate(permutations(range(n_qubits))):
+        # Be careful if you actually assign according to the inverse.
         print('permutation {0:}'.format(i))
         noise_model = NoiseModel()
         for j, qubitno in enumerate(perm):
             noise_model.add_quantum_error(depolarizing_error(depol_error_rates[j], 1),
                                           ['u1', 'u2', 'u3', 'rx', 'ry', 'rz'], [qubitno])
+        for (j, k) in combinations(range(n_qubits), 2):
+            noise_model.add_quantum_error(depolarizing_error(depol_error_rates_2q[j, k], 2),
+                                          ['cz'], [perm[j], perm[k]])
 
         quantum_instance = QuantumInstance(backend=Aer.get_backend("qasm_simulator"),
                                            shots=1024,
@@ -112,5 +119,5 @@ def plot_permutations_experiment(expt_time: str):
 
 if __name__ == '__main__':
     all_permutations_experiment()
-    # plot_permutations_experiment("1655992899")
+    # plot_permutations_experiment("1655994564")
     # print(inverse_factorial(factorial(5)))
