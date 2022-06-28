@@ -16,7 +16,7 @@ from itertools import permutations, combinations
 from math import factorial
 import time
 from scipy.special import lambertw
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Optional
 
 
 def circular_chiral_walk(n_sites: int, alpha: float):
@@ -101,8 +101,32 @@ def inverse_factorial(x: int) -> complex:
     return L / lambertw(L / np.e) + 0.5
 
 
-def solve_then_permute():
-    pass
+def solve_then_check_all_perms(hamiltonian: PauliSumOp,
+                               circ: QuantumCircuit,
+                               noise_model: Optional[NoiseModel] = None):
+    num_qubits = hamiltonian.num_qubits
+    quantum_instance = QuantumInstance(backend=Aer.get_backend("qasm_simulator"),
+                                       shots=1024,
+                                       noise_model=noise_model)
+    spsa = SPSA(maxiter=1000)
+    vqe = VQE(circ,
+              optimizer=spsa,
+              quantum_instance=quantum_instance,
+              initial_point=np.random.randn(circ.num_parameters) * 1e-4)
+    sol = vqe.compute_minimum_eigenvalue(hamiltonian)
+    perm_data = np.zeros(factorial(num_qubits))
+    print('trivial permutation')
+    print('E={0:3.3f}'.format(sol.eigenvalue))
+    for i, perm in enumerate(permutations(range(num_qubits))):
+        h_perm = hamiltonian.permute(list(perm))
+        circ_perm = permute_circuit(circ, perm)
+        vqe = VQE(circ_perm, quantum_instance=quantum_instance)
+        en_eval = vqe.get_energy_evaluation(h_perm)
+        perm_data[i] = en_eval(sol.optimal_point)
+        print(perm)
+        print(perm_data[i])
+
+
 
 
 def permute_circuit(circ: QuantumCircuit,
@@ -152,13 +176,23 @@ if __name__ == '__main__':
     # all_permutations_experiment()
     # plot_permutations_experiment("1656335774")
     # print(inverse_factorial(factorial(5)))
-    perm = [2, 0, 1, 3]
-    h = (X ^ Y ^ Z ^ I)
-    h2 = permute_hamiltonian(h, perm)
-    print(h)
-    print(h2)
-    q = QuantumRegister(4)
-    circ = QuantumCircuit(q)
-    circ.cx(q[0], q[1])
-    circ_new = permute_circuit(circ, perm)
-    print(circ_new)
+    h = (Z ^ I) + 5 * (I ^ Z)
+    ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
+                      entanglement_blocks='cz',
+                      # entanglement=[],
+                      reps=2,
+                      num_qubits=h.num_qubits)
+
+    depol_error_rates = [0., 1e-1]
+    np.random.seed(0)
+    # depol_error_rates_2q = np.random.rand(h.num_qubits, h.num_qubits) * 0.05
+    # depol_error_rates_2q += depol_error_rates_2q.T
+    noise_model = NoiseModel()
+    for j in range(h.num_qubits):
+        noise_model.add_quantum_error(depolarizing_error(depol_error_rates[j], 1),
+                                      ['u1', 'u2', 'u3', 'rx', 'ry', 'rz'], [j])
+    # for (j, k) in combinations(range(h.num_qubits), 2):
+        # noise_model.add_quantum_error(depolarizing_error(depol_error_rates_2q[j, k], 2),
+        #                               ['cz'], [j, k])
+
+    solve_then_check_all_perms(h, ansatz, noise_model)
