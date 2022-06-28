@@ -2,20 +2,21 @@ import matplotlib.pyplot as plt
 from qiskit.algorithms import VQE
 from qiskit.utils import QuantumInstance
 from qiskit import Aer, QuantumCircuit, QuantumRegister
-from qiskit.opflow import X, Z, I, Y, StateFn, PauliOp, OperatorBase
+from qiskit.opflow import X, Z, I, Y, StateFn, PauliOp, OperatorBase, PauliSumOp
+from qiskit.quantum_info import SparsePauliOp
 from qiskit.algorithms.optimizers import ADAM, L_BFGS_B, CG, SPSA
 from qiskit.circuit import parameterexpression, Parameter, ParameterVector
 from qiskit.circuit.library import TwoLocal
-from qiskit.opflow.gradients import Gradient
 from qiskit.providers.aer.noise import NoiseModel
 from qiskit.providers.aer.noise import depolarizing_error
-from qiskit.providers.aer.noise import thermal_relaxation_error
+from qiskit.circuit import Qubit
 import numpy as np
 from functools import reduce
 from itertools import permutations, combinations
 from math import factorial
 import time
 from scipy.special import lambertw
+from typing import List, Union, Tuple
 
 
 def circular_chiral_walk(n_sites: int, alpha: float):
@@ -100,6 +101,36 @@ def inverse_factorial(x: int) -> complex:
     return L / lambertw(L / np.e) + 0.5
 
 
+def solve_then_permute():
+    pass
+
+
+def permute_circuit(circ: QuantumCircuit,
+                    perm: Union[List[int], Tuple[int]]) -> QuantumCircuit:
+    """Return a QuantumCircuit in which every gate from circ is replaced
+    by the same gate acting on qubits perm[i], perm[j], etc."""
+    circ_new = QuantumCircuit(*circ.qregs)
+    for gate in circ.data:
+        instruction = gate[0]
+        qubits = gate[1]
+        params = gate[2]
+        qubits_new = []
+        for qubit in qubits:
+            # print(qubit)
+            # print(dir(qubit))
+            # print(qubit.register)
+            # print(qubit.index)
+            qubits_new.append(Qubit(qubit.register, perm[qubit.index]))
+        circ_new.data.append((instruction, qubits_new, params))
+    return circ_new
+
+
+def permute_hamiltonian(hamiltonian: PauliSumOp,
+                        perm: Union[List[int], Tuple[int]]) -> PauliSumOp:
+    reverse = list(range(hamiltonian.num_qubits - 1, -1, -1))
+    return hamiltonian.permute(reverse).permute(perm).permute(reverse)
+
+
 def plot_permutations_experiment(expt_time: str):
     data = np.loadtxt("permutation_vqe_" + expt_time + ".txt")
     n_qubits = int(round(inverse_factorial(data.shape[0]).real - 1))
@@ -118,6 +149,16 @@ def plot_permutations_experiment(expt_time: str):
 
 
 if __name__ == '__main__':
-    all_permutations_experiment()
-    # plot_permutations_experiment("1655994564")
+    # all_permutations_experiment()
+    # plot_permutations_experiment("1656335774")
     # print(inverse_factorial(factorial(5)))
+    perm = [2, 0, 1, 3]
+    h = (X ^ Y ^ Z ^ I)
+    h2 = permute_hamiltonian(h, perm)
+    print(h)
+    print(h2)
+    q = QuantumRegister(4)
+    circ = QuantumCircuit(q)
+    circ.cx(q[0], q[1])
+    circ_new = permute_circuit(circ, perm)
+    print(circ_new)
