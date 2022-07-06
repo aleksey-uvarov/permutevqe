@@ -1,6 +1,12 @@
+import numpy as np
+
 from main import *
 from qiskit.providers.aer import AerSimulator, AerProvider
+from qiskit import execute
+from qiskit.opflow.primitive_ops import MatrixOp
+from qiskit.providers.aer.backends import QasmSimulator
 
+import copy
 
 def clean_then_noisy_clean(h: PauliSumOp,
                            ansatz: QuantumCircuit,
@@ -36,20 +42,76 @@ def clean_solution(h: PauliSumOp, ansatz: QuantumCircuit):
     return result_clean
 
 
-if __name__ == "__main__":
-    h = (Z ^ I) + 5 * (I ^ Z)
+def telescope_optimization_experiment(n_qubits: int, depth: int, noise_model: Optional[NoiseModel] = None):
+    pauli_list = [Z] + [I] * (n_qubits - 1)
+    h_0 = -0.5 * reduce(PauliOp.tensor, pauli_list)
+    for i in range(1, n_qubits):
+        h_0 += -0.5 * reduce(PauliOp.tensor, pauli_list[i:] + pauli_list[:i])
+    h_0 += reduce(PauliOp.tensor, [I] * n_qubits) * n_qubits * 0.5
+
     ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
                       entanglement_blocks='rxx',
-                      # entanglement=[],
-                      reps=1,
-                      num_qubits=h.num_qubits)
+                      reps=depth,
+                      num_qubits=n_qubits)
 
-    depol_error_rates = [0., 1e-1]
-    np.random.seed(0)
+    backend = Aer.get_backend("unitary_simulator")
+    circ = ansatz.bind_parameters(np.ones(ansatz.num_parameters))
+    result = execute(experiments=circ, backend=backend).result()
+    U = result.get_unitary()
+
+    h = MatrixOp(U @ h_0.to_matrix() @ U.T.conj())
+
+    # noisy_backend = AerProvider().get_backend('aer_simulator_density_matrix')
+    noisy_backend = QasmSimulator(method='density_matrix',
+                                  noise_model=noise_model)
+
+    # noisy_backend = AerProvider().get_backend('aer_simulator_statevector')
+    noisy_instance = QuantumInstance(backend=noisy_backend,
+                                     noise_model=noise_model)
+
+
+
+
+    # clean_instance = QuantumInstance(backend=AerProvider().get_backend('aer_simulator_statevector'))
+    #
+    vqe = VQE(ansatz, optimizer=L_BFGS_B(), include_custom=True, quantum_instance=noisy_instance)
+    foo = vqe.get_energy_evaluation(h)
+    print(foo(np.ones(ansatz.num_parameters)))
+    #
+    # result_noisy = execute(ansatz.bind_parameters(np.ones(ansatz.num_parameters)), noisy_backend).result()
+    # print(dir(result_noisy))
+    # dm = result_noisy.get_density_matrix()
+    # print(dm)
+
+
+def get_energy_estimator(ansatz: QuantumCircuit, h: np.array, noise_model: NoiseModel):
+    def f(x):
+        noisy_backend = QasmSimulator(method='density_matrix',
+                                      noise_model=noise_model)
+        ansatz_2 = ansatz.copy()
+        ansatz_2.save_density_matrix()
+        ansatz_2 = ansatz_2.bind_parameters(x)
+        result = execute(ansatz_2, noisy_backend).result()
+        dm = result.data()['density_matrix']
+        return np.trace(dm @ h)
+    return f
+
+
+if __name__ == "__main__":
     noise_model = NoiseModel()
-    for j in range(h.num_qubits):
-        noise_model.add_quantum_error(depolarizing_error(depol_error_rates[j], 1),
+    for j in range(2):
+        noise_model.add_quantum_error(depolarizing_error(1e-2, 1),
                                       ['u1', 'u2', 'u3', 'rx', 'ry', 'rz'], [j])
+    # telescope_optimization_experiment(2, 2, noise_model)
 
-    clean_then_noisy_clean(h, ansatz, noise_model, all_perms=True)
+    ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
+                      entanglement_blocks='rxx',
+                      reps=2,
+                      num_qubits=2)
+
+    h = (X ^ Y).to_matrix()
+    f = get_energy_estimator(ansatz, h, noise_model)
+    np.random.seed(0)
+    x = np.random.randn(ansatz.num_parameters)
+    print(f(x))
 
