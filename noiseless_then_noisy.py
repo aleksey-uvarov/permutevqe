@@ -4,7 +4,10 @@ from main import *
 from qiskit.providers.aer import AerSimulator, AerProvider
 from qiskit import execute
 from qiskit.opflow.primitive_ops import MatrixOp
+from qiskit.opflow import OperatorBase
 from qiskit.providers.aer.backends import QasmSimulator
+from scipy.optimize import minimize, OptimizeResult
+from qiskit.algorithms.minimum_eigen_solvers.vqe import VQEResult, MinimumEigensolverResult
 
 import copy
 
@@ -31,7 +34,7 @@ def clean_then_noisy_clean(h: PauliSumOp,
             print(perm)
 
 
-def clean_solution(h: PauliSumOp, ansatz: QuantumCircuit):
+def clean_solution(h: OperatorBase, ansatz: QuantumCircuit) -> VQEResult:
     clean_instance = QuantumInstance(backend=AerProvider().get_backend('aer_simulator_statevector'))
     vqe = VQE(ansatz,
               optimizer=L_BFGS_B(),
@@ -42,46 +45,51 @@ def clean_solution(h: PauliSumOp, ansatz: QuantumCircuit):
     return result_clean
 
 
-def telescope_optimization_experiment(n_qubits: int, depth: int, noise_model: Optional[NoiseModel] = None):
+def telescope_hamiltonian(ansatz: QuantumCircuit, seed: Optional[int] = None) -> MatrixOp:
+    n_qubits = ansatz.num_qubits
     pauli_list = [Z] + [I] * (n_qubits - 1)
     h_0 = -0.5 * reduce(PauliOp.tensor, pauli_list)
     for i in range(1, n_qubits):
         h_0 += -0.5 * reduce(PauliOp.tensor, pauli_list[i:] + pauli_list[:i])
     h_0 += reduce(PauliOp.tensor, [I] * n_qubits) * n_qubits * 0.5
+    backend = Aer.get_backend("unitary_simulator")
+    rng = np.random.default_rng(seed)
+    circ = ansatz.bind_parameters(rng.random(ansatz.num_parameters) * 2 * np.pi)
+    result = execute(experiments=circ, backend=backend).result()
+    U = result.get_unitary()
+    h = MatrixOp(U @ h_0.to_matrix() @ U.T.conj())
+    return h
 
+
+def telescope_optimization_experiment(n_qubits: int, depth: int, noise_model: Optional[NoiseModel] = None):
     ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
                       entanglement_blocks='rxx',
                       reps=depth,
                       num_qubits=n_qubits)
+    h = telescope_hamiltonian(ansatz)
+    print(h)
+    sol_clean = clean_solution(h, ansatz)
+    print('clean', sol_clean.eigenvalue)
+    print(sol_clean.optimal_point)
 
-    backend = Aer.get_backend("unitary_simulator")
-    circ = ansatz.bind_parameters(np.ones(ansatz.num_parameters))
-    result = execute(experiments=circ, backend=backend).result()
-    U = result.get_unitary()
-
-    h = MatrixOp(U @ h_0.to_matrix() @ U.T.conj())
-
-    # noisy_backend = AerProvider().get_backend('aer_simulator_density_matrix')
     noisy_backend = QasmSimulator(method='density_matrix',
                                   noise_model=noise_model)
-
-    # noisy_backend = AerProvider().get_backend('aer_simulator_statevector')
     noisy_instance = QuantumInstance(backend=noisy_backend,
                                      noise_model=noise_model)
 
+    perms_data = np.zeros(factorial(n_qubits))
+    for i, perm in enumerate(permutations(range(n_qubits))):
+        h_perm = h.permute(list(perm))
+        print(h_perm)
+        ansatz_perm = permute_circuit(ansatz, perm)
+        foo = get_energy_estimator(ansatz_perm, h_perm, noise_model)
+        print("Initial guess quality ", foo(sol_clean.optimal_point))
+        sol = minimize(foo, sol_clean.optimal_point, method='L-BFGS-B')
+        print(perm, sol.fun)
+        print(sol)
+        perms_data[i] = sol.fun
 
-
-
-    # clean_instance = QuantumInstance(backend=AerProvider().get_backend('aer_simulator_statevector'))
-    #
-    vqe = VQE(ansatz, optimizer=L_BFGS_B(), include_custom=True, quantum_instance=noisy_instance)
-    foo = vqe.get_energy_evaluation(h)
-    print(foo(np.ones(ansatz.num_parameters)))
-    #
-    # result_noisy = execute(ansatz.bind_parameters(np.ones(ansatz.num_parameters)), noisy_backend).result()
-    # print(dir(result_noisy))
-    # dm = result_noisy.get_density_matrix()
-    # print(dm)
+    # np.savetxt("permutation_vqe_" + str(int(time.time())) + ".txt", perms_data)
 
 
 def get_energy_estimator(ansatz: QuantumCircuit, h: np.array, noise_model: NoiseModel):
@@ -93,25 +101,14 @@ def get_energy_estimator(ansatz: QuantumCircuit, h: np.array, noise_model: Noise
         ansatz_2 = ansatz_2.bind_parameters(x)
         result = execute(ansatz_2, noisy_backend).result()
         dm = result.data()['density_matrix']
-        return np.trace(dm @ h)
+        return np.trace(dm.data @ h.to_matrix()).real
     return f
 
 
 if __name__ == "__main__":
     noise_model = NoiseModel()
     for j in range(2):
-        noise_model.add_quantum_error(depolarizing_error(1e-2, 1),
-                                      ['u1', 'u2', 'u3', 'rx', 'ry', 'rz'], [j])
-    # telescope_optimization_experiment(2, 2, noise_model)
+        noise_model.add_quantum_error(depolarizing_error(1e-3, 1), ['rx', 'ry'], [j])
+    telescope_optimization_experiment(2, 2, noise_model)
 
-    ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
-                      entanglement_blocks='rxx',
-                      reps=2,
-                      num_qubits=2)
-
-    h = (X ^ Y).to_matrix()
-    f = get_energy_estimator(ansatz, h, noise_model)
-    np.random.seed(0)
-    x = np.random.randn(ansatz.num_parameters)
-    print(f(x))
 
