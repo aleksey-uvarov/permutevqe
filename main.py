@@ -177,24 +177,27 @@ if __name__ == '__main__':
     # all_permutations_experiment()
     # plot_permutations_experiment("1656335774")
     # print(inverse_factorial(factorial(5)))
-    # h = (Z ^ I) + 5 * (I ^ Z)
-    # ansatz = TwoLocal(rotation_blocks=['ry', 'rx', 'ry'],
-    #                   entanglement_blocks='cz',
-    #                   # entanglement=[],
-    #                   reps=2,
-    #                   num_qubits=h.num_qubits)
-    #
-    # depol_error_rates = [0., 1e-1]
+    h = (Z ^ I) + 5 * (I ^ Z)
+
+    params = ParameterVector('theta', 4)
+
+    qreg = QuantumRegister(2)
+    ansatz = QuantumCircuit(qreg)
+    for i in range(2):
+        ansatz.ry(params[2 * i], qreg[i])
+        ansatz.rx(params[2 * i + 1], qreg[i])
+
+    depol_error_rates = [0., 1e-1]
     # np.random.seed(0)
     # # depol_error_rates_2q = np.random.rand(h.num_qubits, h.num_qubits) * 0.05
     # # depol_error_rates_2q += depol_error_rates_2q.T
-    # noise_model = NoiseModel()
-    # for j in range(h.num_qubits):
-    #     noise_model.add_quantum_error(depolarizing_error(depol_error_rates[j], 1),
-    #                                   ['u1', 'u2', 'u3', 'rx', 'ry', 'rz'], [j])
+    noise_model = NoiseModel()
+    for j in range(h.num_qubits):
+        noise_model.add_quantum_error(depolarizing_error(depol_error_rates[j], 1),
+                                      ['u1', 'u2', 'u3', 'rx', 'ry', 'rz'], [j])
     # # for (j, k) in combinations(range(h.num_qubits), 2):
     #     # noise_model.add_quantum_error(depolarizing_error(depol_error_rates_2q[j, k], 2),
     #     #                               ['cz'], [j, k])
     #
-    # solve_then_check_all_perms(h, ansatz, noise_model)
+    solve_then_check_all_perms(h, ansatz, noise_model)
     pass

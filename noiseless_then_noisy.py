@@ -175,23 +175,41 @@ def random_pauli_op(num_qubits: int, qty_strings: int, seed: Optional[int] = Non
     h = rng.normal() * PauliOp(Pauli(labels_pool[0]))
     for i in range(1, qty_strings):
         h += rng.normal() * PauliOp(Pauli(labels_pool[i]))
-    print(h)
+    # print(h)
     return h
 
 
+def plot_pauliop_experiment(expt_time: str):
+    data = np.loadtxt("permutation_pauli_op_" + expt_time + ".txt")
+    initguess_data = np.loadtxt("initguess_pauli_op_" + expt_time + ".txt")
+    n_qubits = int(round(inverse_factorial(data.shape[0] - 1).real - 1))
+    print(n_qubits)
+    print(data.shape)
+    plt.scatter(np.arange(data.shape[0] - 1), data[:-1])
+    plt.scatter(np.arange(data.shape[0] - 1), initguess_data[:-1], color='tab:orange')
+    perms = list(permutations(range(n_qubits)))
+    print(perms)
+    plt.axhline(y=data[-1])
+    plt.xticks(np.arange(data.shape[0] - 1), perms)
+    plt.ylabel("VQE energy")
+    plt.grid()
+    plt.savefig("permutation_pauli_op_" + expt_time + ".png", format='png', bbox_inches='tight', dpi=400)
+    plt.show()
+
+
 if __name__ == "__main__":
-    n_qubits = 3
-    depth = 2
-    qty_strings = 10
-    local_errors = [0., 1e-3, 1e-2]
-    seed = 0
-    noise_model = NoiseModel()
-    for j in range(n_qubits):
-        noise_model.add_quantum_error(depolarizing_error(local_errors[j], 1), ['rx', 'ry'], [j])
-    pauli_op_optimization_experiment(n_qubits, depth, qty_strings)
+    # n_qubits = 3
+    # depth = 2
+    # qty_strings = 10
+    # local_errors = [0., 1e-3, 1e-2]
+    # seed = 2
+    # noise_model = NoiseModel()
+    # for j in range(n_qubits):
+    #     noise_model.add_quantum_error(depolarizing_error(local_errors[j], 1), ['rx', 'ry'], [j])
+    # pauli_op_optimization_experiment(n_qubits, depth, qty_strings, noise_model, seed=seed)
 
     # telescope_optimization_experiment(n_qubits, depth, noise_model, seed)
 
-    # plot_telescope_experiment('1657197856')
+    plot_pauliop_experiment('1657631298')
 
     # random_pauli_op(3, 10, seed=0)
