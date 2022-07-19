@@ -42,7 +42,7 @@ def clean_then_noisy_clean(h: PauliSumOp,
 def clean_solution(h: OperatorBase, ansatz: QuantumCircuit) -> VQEResult:
     clean_instance = QuantumInstance(backend=AerProvider().get_backend('aer_simulator_statevector'))
     vqe = VQE(ansatz,
-              optimizer=L_BFGS_B(),
+              optimizer=L_BFGS_B(maxfun=10000),
               quantum_instance=clean_instance,
               initial_point=np.random.randn(ansatz.num_parameters) * 1e-4,
               include_custom=True)
@@ -198,18 +198,18 @@ def plot_pauliop_experiment(expt_time: str):
 
 
 if __name__ == "__main__":
-    # n_qubits = 3
-    # depth = 2
-    # qty_strings = 10
-    # local_errors = [0., 1e-3, 1e-2]
-    # seed = 2
-    # noise_model = NoiseModel()
-    # for j in range(n_qubits):
-    #     noise_model.add_quantum_error(depolarizing_error(local_errors[j], 1), ['rx', 'ry'], [j])
-    # pauli_op_optimization_experiment(n_qubits, depth, qty_strings, noise_model, seed=seed)
+    n_qubits = 4
+    depth = 2
+    qty_strings = 10
+    local_errors = [0., 1e-3, 1e-2, 2e-2]
+    seed = 10
+    noise_model = NoiseModel()
+    for j in range(n_qubits):
+        noise_model.add_quantum_error(depolarizing_error(local_errors[j], 1), ['rx', 'ry'], [j])
+    pauli_op_optimization_experiment(n_qubits, depth, qty_strings, noise_model, seed=seed)
 
     # telescope_optimization_experiment(n_qubits, depth, noise_model, seed)
 
-    plot_pauliop_experiment('1657631298')
+    # plot_pauliop_experiment('1657909592')
 
     # random_pauli_op(3, 10, seed=0)
